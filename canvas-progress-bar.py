@@ -79,8 +79,7 @@ def get_current_hour():
 current_hour = get_current_hour()
 print("CURRENT HOUR: ", current_hour)
 
-#if current_hour < 23 and current_hour > 8:
-if current_hour:
+if current_hour < 23 and current_hour > 8:
     job_status = {
         "makergear": get_job('makergear'),
         "lulzbot": get_job('lulzbot'),
