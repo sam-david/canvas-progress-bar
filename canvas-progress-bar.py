@@ -7,11 +7,12 @@ import datetime
 from pytz import timezone
 import pytz
 
-NANOLEAF_API_ENDPOINT = "http://10.0.1.19:16021/api/v1/"
-NANOLEAF_AUTH_TOKEN = "wmyApYFd5t7LA0GXomcQ4Od5aSQ5AcWd"
+NANOLEAF_API_ENDPOINT = "http://10.0.1.30:16021/api/v1/"
+NANOLEAF_AUTH_TOKEN = "9T3xpTPNxsBxlWEnHmmIxOuElgfFNdQl"
 NANOLEAF_BASE_URL = NANOLEAF_API_ENDPOINT + NANOLEAF_AUTH_TOKEN
 MAKERGEAR_API_KEY = "25C8431CFE07466D81CF9FA8831D0D40"
 LULZBOT_API_KEY = "25BF160035354521978E60B57E7F18C6"
+ENDER_API_KEY = "BE943CE2F30D43F6A87C16EFE3340A7C"
 DATE_FORMAT='%m/%d/%Y %H:%M:%S %Z'
 
 def nano_progress_bar(printer, level):
@@ -27,6 +28,9 @@ def get_job(printer):
     elif printer == 'lulzbot':
         api_endpoint = 'http://10.0.1.4'
         headers = { 'X-Api-Key': LULZBOT_API_KEY }
+    elif printer == 'ender':
+        api_endpoint = 'http://10.0.1.36'
+        headers = { 'X-Api-Key': ENDER_API_KEY }
     else:
         raise Exception("Invalid Printer")
 
@@ -41,69 +45,64 @@ def get_job(printer):
 
         return {
                 'percent_complete': percent_complete,
-                'panel_count': lit_panel_count 
+                'panel_count': lit_panel_count
         }
 
+# POWER FUNCTIONS
 def get_power_state():
     request_state_url = NANOLEAF_BASE_URL + "/state/on"
     response = requests.get(url = request_state_url)
     return response.json()['value']
 
+def turn_off_canvas():
+    is_on = get_power_state()
+    # print('Power is_on = ' + str(is_on))
+    if is_on:
+        request_url = NANOLEAF_BASE_URL + "/state"
+        data = {'on':{'value':False}}
+        headers = { 'Content-Type': 'application/json' }
 
-def turn_off():
-    request_url = NANOLEAF_BASE_URL + "/state"
-    data = {'on':{'value':False}}
-    headers = { 'Content-Type': 'application/json' }
+        response = requests.put(url = request_url, data = json.dumps(data), headers= headers)
+        if response.status_code == 204:
+            print('Success: Nanoleaf turned off')
 
-    response = requests.put(url = request_url, data = json.dumps(data), headers= headers)
-    if response.status_code == 204:
-        print('Success: Nanoleaf turned off')
+def get_current_hour():
+    date = datetime.datetime.now(tz=pytz.utc)
+    pst_date = date.astimezone(timezone('US/Pacific'))
+    print('Current PST date & time is:', pst_date.strftime(DATE_FORMAT))
+    current_hour = pst_date.hour
+    return current_hour
 
-
-
-date = datetime.datetime.now(tz=pytz.utc)
-pst_date = date.astimezone(timezone('US/Pacific'))
-print('Current PST date & time is:', pst_date.strftime(DATE_FORMAT))
-current_hour = pst_date.hour
+current_hour = get_current_hour()
 
 #if current_hour < 23 and current_hour > 8:
 if current_hour:
-    makergear_job_status = get_job('makergear')
-    lulzbot_job_status = get_job('lulzbot')
+    job_status = {
+        "makergear": get_job('makergear'),
+        "lulzbot": get_job('lulzbot'),
+        "ender": get_job('ender')
+    }
 
-    if lulzbot_job_status == 'Offline' and makergear_job_status == 'Offline':
-        # Both Offline
-        is_on = get_power_state()
-        print('Power is_on = ' + str(is_on))
-        if is_on:
-            turn_off()
-    elif lulzbot_job_status == 'Offline' and makergear_job_status['percent_complete'] != 100.0:
-        # Makergear on
-        print('PUT makergear panels count: ' + str(makergear_job_status['panel_count']))
-        nano_progress_bar('makergear', makergear_job_status['panel_count'])
-    elif makergear_job_status == 'Offline' and lulzbot_job_status['percent_complete'] != 100.0:
-        # Lulzbot on
-        print('PUT lulzbot panels count: ' + str(lulzbot_job_status['panel_count']))
-        nano_progress_bar('lulzbot', lulzbot_job_status['panel_count'])
-    elif makergear_job_status['percent_complete'] != 100.0 and lulzbot_job_status['percent_complete'] != 100.0:
-        # Both on
-        print('PUT makergear panels count: ' + str(makergear_job_status['panel_count']))
-        nano_progress_bar('makergear', makergear_job_status['panel_count'])
+    online_printer_count = 0
+    # Is printer offline or done job?
+    for printer in job_status:
+        if job_status[printer] == 'Offline' and job_status[printer]['percent_complete'] != 100.0:
+            online_printer_count += 1
 
-        time.sleep(30)
+    if online_printer_count == 0:
+        # No printers online
+        turn_off_canvas()
+    elif online_printer_count > 0:
+        # Loop through online printers and POST panels
+        timeout_length = 60 / online_printer_count
 
-        print('PUT lulzbot panels count: ' + str(lulzbot_job_status['panel_count']))
-        nano_progress_bar('lulzbot', lulzbot_job_status['panel_count'])
+        for printer in job_status:
+            if job_status[printer] != 'Offline':
+                nano_progress_bar(printer, job_status[printer]['panel_count'])
+                time.sleep(timeout_length)
     else:
-        # Fallback
-        is_on = get_power_state()
-        print('Power is_on = ' + str(is_on))
-        if is_on:
-            turn_off()
+        turn_off_canvas()
 else:
-    is_on = get_power_state()
-    print('Power is_on = ' + str(is_on))
-    if is_on:
-        turn_off()
+    turn_off_canvas()
 
 
