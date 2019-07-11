@@ -13,7 +13,6 @@ NANOLEAF_BASE_URL = NANOLEAF_API_ENDPOINT + NANOLEAF_AUTH_TOKEN
 MAKERGEAR_API_KEY = "25C8431CFE07466D81CF9FA8831D0D40"
 LULZBOT_API_KEY = "25BF160035354521978E60B57E7F18C6"
 ENDER_API_KEY = "BE943CE2F30D43F6A87C16EFE3340A7C"
-OFFLINE_STRING = "Offline (Error: Too many consecutive timeouts, printer still connected and alive?)"
 TOTAL_PRINTER_COUNT = 3
 DATE_FORMAT='%m/%d/%Y %H:%M:%S %Z'
 
@@ -78,6 +77,7 @@ def get_current_hour():
     return current_hour
 
 current_hour = get_current_hour()
+print("CURRENT HOUR: ", current_hour)
 
 #if current_hour < 23 and current_hour > 8:
 if current_hour:
@@ -90,7 +90,8 @@ if current_hour:
     offline_printer_count = 0
     # Is printer offline or done job?
     for printer in job_status:
-        if job_status[printer]['state'] == OFFLINE_STRING and job_status[printer]['progress']['completion'] != 100.0:
+        print(printer, " JOB STATE: ", job_status[printer]['state'])
+        if job_status[printer]['state'] != 'Printing':
             offline_printer_count += 1
 
     online_printer_count = TOTAL_PRINTER_COUNT - offline_printer_count
@@ -105,9 +106,8 @@ if current_hour:
         timeout_length = 60 / online_printer_count
 
         for printer in job_status:
-            if job_status[printer]['state'] != OFFLINE_STRING:
+            if job_status[printer]['state'] == 'Printing':
                 job_info = job_status[printer]
-                # print("job info", str(job_info))
                 nano_progress_bar(printer, job_info)
                 time.sleep(timeout_length)
     else:
