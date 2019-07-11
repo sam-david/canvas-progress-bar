@@ -13,13 +13,9 @@ NANOLEAF_BASE_URL = NANOLEAF_API_ENDPOINT + NANOLEAF_AUTH_TOKEN
 MAKERGEAR_API_KEY = "25C8431CFE07466D81CF9FA8831D0D40"
 LULZBOT_API_KEY = "25BF160035354521978E60B57E7F18C6"
 ENDER_API_KEY = "BE943CE2F30D43F6A87C16EFE3340A7C"
+OFFLINE_STRING = "Offline (Error: Too many consecutive timeouts, printer still connected and alive?)"
+TOTAL_PRINTER_COUNT = 3
 DATE_FORMAT='%m/%d/%Y %H:%M:%S %Z'
-
-def nano_progress_bar(printer, level):
-    data = { 'select': printer.capitalize() + ' ' + str(level) }
-    request_url = NANOLEAF_BASE_URL + "/effects"
-
-    requests.put(url = request_url, data = json.dumps(data))
 
 def get_job(printer):
     if printer == 'makergear':
@@ -36,17 +32,25 @@ def get_job(printer):
 
     request_url = api_endpoint + "/api/job"
     response = requests.get(url = request_url, headers=headers).json()
-    if response['progress']['completion'] == None:
-        return 'Offline'
-    else:
-        percent_complete = response['progress']['completion']
-	panel_count = 10
-        lit_panel_count = math.ceil((percent_complete / 100) * panel_count)
 
-        return {
-                'percent_complete': percent_complete,
-                'panel_count': lit_panel_count
-        }
+    return response
+
+def nano_progress_bar(printer, job_info):
+    panel_count = lit_panel_count(job_info)
+    print(str(printer), "POST Nano panel count: ", panel_count)
+    data = { 'select': printer.capitalize() + ' ' + str(panel_count) }
+    request_url = NANOLEAF_BASE_URL + "/effects"
+
+    requests.put(url = request_url, data = json.dumps(data))
+
+
+def lit_panel_count(job_info):
+    percent_complete = job_info['progress']['completion']
+    panel_count = 10
+    lit_panel_count = math.ceil((percent_complete / 100) * panel_count)
+
+    return lit_panel_count
+
 
 # POWER FUNCTIONS
 def get_power_state():
@@ -83,11 +87,15 @@ if current_hour:
         "ender": get_job('ender')
     }
 
-    online_printer_count = 0
+    offline_printer_count = 0
     # Is printer offline or done job?
     for printer in job_status:
-        if job_status[printer] == 'Offline' and job_status[printer]['percent_complete'] != 100.0:
-            online_printer_count += 1
+        if job_status[printer]['state'] == OFFLINE_STRING and job_status[printer]['progress']['completion'] != 100.0:
+            offline_printer_count += 1
+
+    online_printer_count = TOTAL_PRINTER_COUNT - offline_printer_count
+    print("Online Printer Count:", online_printer_count)
+
 
     if online_printer_count == 0:
         # No printers online
@@ -97,8 +105,10 @@ if current_hour:
         timeout_length = 60 / online_printer_count
 
         for printer in job_status:
-            if job_status[printer] != 'Offline':
-                nano_progress_bar(printer, job_status[printer]['panel_count'])
+            if job_status[printer]['state'] != OFFLINE_STRING:
+                job_info = job_status[printer]
+                # print("job info", str(job_info))
+                nano_progress_bar(printer, job_info)
                 time.sleep(timeout_length)
     else:
         turn_off_canvas()
